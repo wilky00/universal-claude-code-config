@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Install script for a user-owned universal Claude Code config repo.
-# Copies CLAUDE.md, docs/*.md, and commands/*.md into ~/.claude/
+# Copies CLAUDE.md, docs/*.md, commands/*.md, and agents/*.md into ~/.claude/
 # after cloning a shallow copy of the configured GitHub repository.
+#
+# Compatible with bash 3.2+ (macOS default).
 
-set -Eeuo pipefail
+set -euo pipefail
 IFS=$'\n\t'
 
 OWNER="${CLAUDE_CONFIG_OWNER:-Wilky00}"
@@ -65,7 +67,7 @@ require_cmd git
 require_cmd mktemp
 require_cmd install
 
-mkdir -p "$CLAUDE_DIR" "$CLAUDE_DIR/docs" "$CLAUDE_DIR/commands" "$CLAUDE_DIR/backups"
+mkdir -p "$CLAUDE_DIR" "$CLAUDE_DIR/docs" "$CLAUDE_DIR/commands" "$CLAUDE_DIR/agents" "$CLAUDE_DIR/backups"
 
 echo ""
 echo "Installing Claude config from ${OWNER}/${REPO} (${BRANCH})..."
@@ -75,12 +77,27 @@ echo ""
 git clone --quiet --depth 1 --branch "$BRANCH" "$REPO_URL" "$REPO_DIR" \
   || fail "Could not clone ${REPO_URL}. If the repo is private, set CLAUDE_CONFIG_GIT_URL to an SSH URL."
 
-[[ -f "$REPO_DIR/CLAUDE.md" ]] || fail "Repository does not contain CLAUDE.md"
-[[ -d "$REPO_DIR/docs" ]] || fail "Repository does not contain a docs/ directory"
-[[ -d "$REPO_DIR/commands" ]] || fail "Repository does not contain a commands/ directory"
+[[ -f "$REPO_DIR/CLAUDE.md" ]]   || fail "Repository does not contain CLAUDE.md"
+[[ -d "$REPO_DIR/docs" ]]        || fail "Repository does not contain a docs/ directory"
+[[ -d "$REPO_DIR/commands" ]]    || fail "Repository does not contain a commands/ directory"
 
-mapfile -t DOC_FILES < <(cd "$REPO_DIR" && find docs -maxdepth 1 -type f -name '*.md' | sort)
-mapfile -t COMMAND_FILES < <(cd "$REPO_DIR" && find commands -maxdepth 1 -type f -name '*.md' | sort)
+# Build file lists without mapfile (bash 3.2 compatible)
+DOC_FILES=()
+while IFS= read -r line; do
+  [[ -n "$line" ]] && DOC_FILES+=("$line")
+done < <(cd "$REPO_DIR" && find docs -maxdepth 1 -type f -name '*.md' | sort)
+
+COMMAND_FILES=()
+while IFS= read -r line; do
+  [[ -n "$line" ]] && COMMAND_FILES+=("$line")
+done < <(cd "$REPO_DIR" && find commands -maxdepth 1 -type f -name '*.md' | sort)
+
+AGENT_FILES=()
+if [[ -d "$REPO_DIR/agents" ]]; then
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && AGENT_FILES+=("$line")
+  done < <(cd "$REPO_DIR" && find agents -maxdepth 1 -type f -name '*.md' | sort)
+fi
 
 install_file "CLAUDE.md"
 
@@ -92,10 +109,15 @@ for rel in "${COMMAND_FILES[@]}"; do
   install_file "$rel"
 done
 
+for rel in "${AGENT_FILES[@]}"; do
+  install_file "$rel"
+done
+
 {
   echo "CLAUDE.md"
   printf '%s\n' "${DOC_FILES[@]}"
   printf '%s\n' "${COMMAND_FILES[@]}"
+  [[ ${#AGENT_FILES[@]} -gt 0 ]] && printf '%s\n' "${AGENT_FILES[@]}"
 } > "$MANIFEST_FILE"
 
 REVISION="${BRANCH}@$(git -C "$REPO_DIR" rev-parse --short HEAD)"

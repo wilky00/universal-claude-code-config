@@ -10,7 +10,7 @@
 
 A global [Claude Code](https://claude.ai/code) configuration that installs into `~/.claude/` and applies sensible engineering defaults across every project you work on.
 
-Covers: code standards, security, testing, accessibility, git, Docker, AI/LLM work, and workflow conventions — plus two slash commands (`/project-memory` and `/accessibility`) that auto-discover context and run audits.
+Covers: code standards, security, testing, accessibility, git, Docker, AI/LLM work, and workflow conventions — plus slash commands and a global researcher sub-agent that auto-discovers context, runs audits, and handles codebase research economically across every session.
 
 ---
 
@@ -22,7 +22,6 @@ Covers: code standards, security, testing, accessibility, git, Docker, AI/LLM wo
 curl -fsSL https://raw.githubusercontent.com/Wilky00/universal-claude-code-config/main/install.sh | bash
 ```
 
-
 ### Manual
 
 Clone the repo and copy files yourself:
@@ -31,10 +30,11 @@ Clone the repo and copy files yourself:
 git clone https://github.com/wilky00/universal-claude-code-config.git
 cd universal-claude-code-config
 
-mkdir -p ~/.claude/docs ~/.claude/commands
+mkdir -p ~/.claude/docs ~/.claude/commands ~/.claude/agents
 cp CLAUDE.md ~/.claude/CLAUDE.md
 cp docs/* ~/.claude/docs/
 cp commands/* ~/.claude/commands/
+cp agents/* ~/.claude/agents/
 ```
 
 ---
@@ -102,18 +102,34 @@ Every section of `CLAUDE.md` is intentional. Here's what each one does and why i
 │   ├── python.md                # uv, pytest, ruff, FastAPI, Pydantic conventions
 │   ├── aws.md                   # EC2/Docker, IAM, secrets, region conventions
 │   ├── git.md                   # Branch naming, commit style, PR format
-│   └── (...)
-└── commands/
-    ├── project-memory.md        # /project-memory — maintains decisions, issues, progress logs
-    └── accessibility.md         # /accessibility — runs audits for web, mobile, CLI, API
+│   └── (...)                    # Full stack coverage — see docs/ for all files
+├── commands/
+│   ├── project-memory.md        # /project-memory — maintains decisions, issues, progress logs
+│   ├── accessibility.md         # /accessibility — runs audits for web, mobile, CLI, API
+│   ├── generate-tests.md        # /generate-tests — generates test suite for current file or module
+│   ├── phase-start.md           # /phase-start — Opus plan mode kickoff for a new build phase
+│   └── phase-done.md            # /phase-done — phase gate check: tests, security, project notes
+└── agents/
+    └── researcher.md            # Global read-only research sub-agent (runs on Haiku)
 ```
 
 ### Slash commands
 
 | Command | What it does |
-|---------|-------------|
+|---|---|
 | `/project-memory` | Creates or reads `project_notes/` in the current project — tracks decisions, known issues, and progress across sessions |
 | `/accessibility` | Detects project type and runs the appropriate accessibility audit (Lighthouse for web, label checks for mobile, contrast for CLI, etc.) |
+| `/generate-tests` | Generates a test suite for the current file or module, following the project's testing conventions |
+| `/phase-start <phase-file>` | Switches to Opus in plan mode, delegates orientation to the researcher agent, and produces an implementation plan for the given phase — waits for approval before writing any code |
+| `/phase-done <phase-number>` | Runs the full phase close-out gate: unit + integration tests, phase gate checklist, security baseline, accessibility (if applicable), then updates all `project_notes/` files and reports COMPLETE or BLOCKED |
+
+### Sub-agents
+
+| Agent | Model | What it does |
+|---|---|---|
+| `researcher` | Haiku | Read-only codebase and documentation research. Handles all "find where X is", "does Y exist", and "what does the code currently look like" tasks without bloating the main context window. Costs a fraction of running the same searches in the main Sonnet session. |
+
+Sub-agents are defined in `agents/` and are available globally across every project. A project can override a global agent by placing its own definition in `.claude/agents/` in the project root — the project-level definition takes precedence.
 
 ---
 
@@ -126,6 +142,33 @@ The `docs/` files are referenced from `CLAUDE.md` under **Technology Standards**
 - Remove references to ones you don't use
 
 For project-specific rules, add a `CLAUDE.md` to your project root — Claude Code merges it with the global one.
+
+For project-specific agents, add a `.claude/agents/` directory to your project root. Any agent defined there overrides the global version of the same name for that project only.
+
+---
+
+## Phase workflow (for phased build projects)
+
+If your project uses a phased development plan, these two commands give you a consistent start/close ritual for every phase:
+
+**Starting a phase:**
+```
+/phase-start dev_plan/01_phase1_infrastructure_auth.md
+```
+Claude switches to Opus, enters plan mode, delegates all orientation reading to the researcher agent (Haiku), and returns a structured implementation plan. Nothing gets written until you explicitly approve.
+
+**Closing a phase:**
+```
+/phase-done 1
+```
+Claude runs the full gate check — tests, phase-specific test gates, security baseline, accessibility — then updates `project_notes/progress.md`, `known-issues.md`, and `decisions.md`. Reports COMPLETE or BLOCKED with any action items before the next phase starts.
+
+For this to work, your project needs:
+- `project_notes/decisions.md`, `progress.md`, and `known-issues.md`
+- A CLAUDE.md that references your testing and security docs
+- A phase file for each phase (e.g. `dev_plan/01_phase1.md`)
+
+The `/project-memory` command sets up the `project_notes/` structure automatically.
 
 ---
 
